@@ -1,0 +1,89 @@
+#!/usr/bin/env python
+import logging
+import grpc
+import image_pb2, image_pb2_grpc
+import argparse
+import sys
+from PIL import Image
+import numpy as np
+import io
+from pathlib import Path
+from image_processing import image_to_NLImage
+
+def run():
+	# adding arguments
+	parser = argparse.ArgumentParser()
+	parser.add_argument('-p', '--port', help="specify the port to connect to server", required=True)
+	parser.add_argument('-ho', '--host', help="specify the host to connect to server", required=True)
+	parser.add_argument('-i', '--input', help="enter the image file location, only png and jpeg are supported", required=True)
+	parser.add_argument('-o', '--output', help="enter the desired image output file location, please include desired image \
+		output filename, including image type (png or jpeg)",type=Path, required=True)
+	parser.add_argument('-r', '--rotate', help="enter one of the four angle of rotation - (NONE, NINETY_DEG, ONE_EIGHTY_DEG, TWO_SEVENTY_DEG)")
+	parser.add_argument('-m', '--mean', help="whether or not to include mean filter", action="store_true")
+	args = parser.parse_args()
+
+	# check for invalid input
+	try:
+		image = Image.open(args.input)
+		# check image format
+		if image.format != "PNG" and image.format != "JPEG":
+			logging.error("Invalid image format")
+			sys.exit(1)
+	except:
+		logging.error("Inavlid input file path")
+		sys.exit(1)
+
+	if not args.output.exists():
+		logging.error("Inavlid output file path")
+		sys.exit(1)
+
+	if not args.rotate and not args.mean:
+		logging.error("No action on image is passed, please choose at least one from --rotate or --mean")
+		sys.exit(1)
+
+
+	if args.rotate and args.rotate not in ("NONE", "NINETY_DEG", "ONE_EIGHTY_DEG", "TWO_SEVENTY_DEG"):
+		loggin.error("Rotating angle is invalid")
+		sys.exit(1)
+
+	input_image = image_to_NLImage(image)
+
+	# create client channel
+	with grpc.insecure_channel(f'{args.host}:{str(args.port)}') as channel:
+		stub = image_pb2_grpc.NLImageServiceStub(channel)
+		if args.rotate:
+			rotation_dict = {"NONE": image_pb2.NLImageRotateRequest.Rotation.NONE,
+				  "NINETY_DEG": image_pb2.NLImageRotateRequest.Rotation.NINETY_DEG,
+				  "ONE_EIGHTY_DEG": image_pb2.NLImageRotateRequest.Rotation.ONE_EIGHTY_DEG,
+				  "TWO_SEVENTY_DEG": image_pb2.NLImageRotateRequest.Rotation.TWO_SEVENTY_DEG}
+			response = stub.RotateImage(image_pb2.NLImageRotateRequest(rotation=rotation_dict[args.rotate], image=input_image), timeout=100)
+			out_image = Image.open(io.BytesIO(response.data))
+			input_image = image_to_NLImage(out_image)
+		if args.mean:
+			response = stub.MeanFilter(input_image, timeout=100)
+			out_image = Image.open(io.BytesIO(response.data))
+
+		name = args.input.split("/")[-1].split(".")[0] + "_edited"
+		output = args.output
+		output_path = f"{args.output}/{name}.{out_image.format.lower()}"
+		out_image.save(output_path)
+		logging.info(f"File is stored in {output_path}")
+
+if __name__ == "__main__":
+	logging.basicConfig(level=logging.INFO)
+	run()
+
+
+
+	
+
+	
+
+
+
+
+
+
+
+
+

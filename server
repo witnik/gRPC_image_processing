@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+from concurrent import futures
+import logging
+import grpc
+import image_pb2, image_pb2_grpc
+import argparse
+from PIL import Image
+import io
+import numpy as np
+from image_processing import image_to_NLImage, meanfilter_arr, NLImage_image
+import sys
+
+class NLImageService(image_pb2_grpc.NLImageServiceServicer):
+
+	def RotateImage(self, request, context):
+		logging.info("starting rotate")
+		rotation = request.rotation
+		image = request.image
+		try:
+			res_image = NLImage_image(image)
+		except Exception as e:
+			logging.error(f"Error encountered when convert NLImage: {str(e)}")
+		img_type = res_image.format
+
+		res_image = res_image.rotate(90 * rotation)
+		res_image.format = img_type
+		return image_to_NLImage(res_image)
+
+	def MeanFilter(self, request, context):
+		logging.info("starting mean filter")
+		image = request
+		try:
+			res_image = NLImage_image(image)
+		except Exception as e:
+			logging.error(f"Error encountered when convert NLImage: {str(e)}")
+		img_type = res_image.format
+		image_arr = np.array(res_image)
+		if image.color:
+			for i in range(3):
+				image_arr[:,:,i] = meanfilter_arr(image_arr[:,:,i])
+			res_image = Image.fromarray(image_arr, "RGB")
+
+		else:
+			# grayscale is 2D so we do not need to perform extra operation
+			image_arr = meanfilter_arr(image_arr)
+			res_image = Image.fromarray(image_arr, "L")
+		res_image.format = img_type
+		return image_to_NLImage(res_image)
+
+
+def serve():
+	# adding arguments
+	parser = argparse.ArgumentParser()
+	parser.add_argument("--port", help="Specify the port for the server to bind", required=True)
+	parser.add_argument("--host", help="Specify the host for the server to bind", required=True)
+	args = parser.parse_args()
+
+	server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+	image_pb2_grpc.add_NLImageServiceServicer_to_server(NLImageService(), server)
+	server.add_insecure_port(f'[::]:{args.port}')
+	server.start()
+	logging.info("Server Started!")
+	server.wait_for_termination()
+
+if __name__ == '__main__':
+	logging.basicConfig(level=logging.INFO)
+	serve()
