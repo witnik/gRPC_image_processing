@@ -51,7 +51,9 @@ def run():
 	# create client channel
 	with grpc.insecure_channel(f'{args.host}:{str(args.port)}') as channel:
 		stub = image_pb2_grpc.NLImageServiceStub(channel)
+		logging.info("Connected to server!")
 		if args.rotate:
+			logging.info("Rotating!")
 			rotation_dict = {"NONE": image_pb2.NLImageRotateRequest.Rotation.NONE,
 				  "NINETY_DEG": image_pb2.NLImageRotateRequest.Rotation.NINETY_DEG,
 				  "ONE_EIGHTY_DEG": image_pb2.NLImageRotateRequest.Rotation.ONE_EIGHTY_DEG,
@@ -60,6 +62,7 @@ def run():
 			out_image = Image.open(io.BytesIO(response.data))
 			input_image = image_to_NLImage(out_image)
 		if args.mean:
+			logging.info("Mean Filtering!")
 			response = stub.MeanFilter(input_image, timeout=100)
 			out_image = Image.open(io.BytesIO(response.data))
 
